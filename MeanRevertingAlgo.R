@@ -4,16 +4,34 @@ library(ggplot2)
 library(dplyr)
 library(data.table)
 
+# Get data from Quandl
+EURUSD <- Quandl("ECB/EURUSD", order = "asc")
 
-data1 <- Quandl("ECB/EURUSD", order = "asc")
+# Add standard deviation bands
+bands <- BBands(EURUSD$Value, n = 30, sd = 3)
 
-data2 <- BBands(data1$Value, n = 30, sd = 3)
-data2 <- data.frame(cbind(data1, data2))
+# Add standard deviations to 'EURUSD'
+EURUSD <- cbind(EURUSD, bands)
 
-EURUSD <- as.data.table(data2)
+# Get rid 'bands' variable; won't be used anymore 
+rm(bands)
+
+# Make 'EURUSU' data.table
+EURUSD <- as.data.table(EURUSD)
+
+
+# Remove NA values created from calculation in above code and remove 'pctB' column
+EURUSD[, pctB := NULL]
 EURUSD <- EURUSD[-c(1:29)]
-EURUSD[, low.eps := mavg -(mavg * .005)]
-EURUSD[, up.eps := mavg +(mavg * .005)]
+
+
+# Make below table
+lower <- EURUSD[, .(Date, Value, dn, mavg)]
+lower[, low.eps := mavg -(mavg * .005)]
+
+# Make above data.table
+upper <- EURUSD[, .(Date, Value, up, mavg)]
+upper[, up.eps := mavg +(mavg * .005)]
 
 # Below
 below <- EURUSD[Value < dn]
@@ -30,50 +48,11 @@ between.up.and.eps <- EURUSD[Value < up & Value > up.eps]
 # Between epsilon bands
 between.eps <- EURUSD[Value >= low.eps & Value <= up.eps]
 
-# Run through the dates that the Value is below the dn band in EURUSD (saved in below) and 
-# add a 30 day timeframe after the date. Then reference the between.lowers data.table and 
-# and create check. Then if the l
-count <- 0
-for(i in 1:length(below.date)){
-        date[i] <-  + 1:30
-        check <- between.low.and.eps[Date %in% date, ]
-        if(length(check[Value > lower.e2ps]) > 1){
-          count <- count + 1
-          
-        }
-      }
-
-
-clean.date <- function(x){
-        dates <<- difftime()
-}
-
-below.test <- function(x){
- if(x[Value < dn]){
-  date <-  + 1:30
-  check <- between.low.and.eps[Date %in% date, .(Value, lower.eps)]
-  if(sum(check[Value > lower.e2ps]) > 1){
-    count <- count + 1
-    }
-  }
-}
 
 data2 <- data2[-c(1:4000), ]
 
-ggplot(test, aes(x = Date)) +
-    geom_line(aes(y = Value), col = "blue") +
-    geom_line(aes(y = mavg)) +
-    geom_line(aes(y = dn), col = "red") +    
-    geom_line(aes(y = up),col = "red" ) +
-    geom_line(aes(y = low.eps))
-    
-
-data2
-
 abv <- dummy[dummy$Value > dummy$up, ]
 blow <- dummy[dummy$Value < dummy$dn, ]
-
-
 
 
 eps <- data2$mavg * 0.005
@@ -88,30 +67,23 @@ dummy <- mutate(dummy, low.eps = dummy$mavg - (dummy$mavg * .005))
 
 
 
-ggplot(dummy, aes(x = data2.Date)) +
-      geom_line(aes(y = data2.mavg), col = "blue") +
-      geom_line(aes(y = up.eps)) +
-      geom_line(aes(y = low.eps))
 
-extend.date <- function(x){
-          dates <<- x + 1:30
-          
 below[, Date2 := as.Date(c(below$Date[-1], NA))] # Line up Date column with the succeeding date
 
 
 below$Date2 - below$Date # Take difference between Date column and succeeding date column
 below[below$Date2 - below$Date > 1] # Find where difference in Dates is greater than 1
 
-test <- below[below$Date2 - below$Date > 1]
+below[below$Date2 - below$Date > 1]
 
 
-test2 <- EURUSD[Date %in% test]
+
 
 success <- 0
 if(nrow(test2[Value > low.eps]) > 0){
   success <- success + 1
 }
-belowdates <- below[, Date]
+
 
  CreateRange <- function(x, timeframe){
    # Take a vector of dates preprocessed to be the last dates where the 
@@ -120,8 +92,6 @@ belowdates <- below[, Date]
    x + 1:timeframe 
  }
 
-# Created variable to test how to lapply above function properly
-daterange <- lapply(test$Date, CreateRange, 30)
 
 DownMatch <- function(x, matchdata){
   # Takes the result from the CreateRange function and matches the dates in this
@@ -129,16 +99,13 @@ DownMatch <- function(x, matchdata){
   matchdata[Date %in% x]
 }
 
-# Created variable to test how to lapply above function properly
-testrange <- lapply(daterange, DownMatch, EURUSD)
-
-success <- 0
 
 TestCounter <- function(x){
   # Takes the result of prior function and then tests to see if there is anywhere
   # where the Value has officially crossed back over the low.eps mavg error band, thus
   # indicating that it has successfully bounced back from being below the desired standard
   # deviation level, i.e our value has officially reverted!
+    success <- 0
     if(nrow(x[Value > low.eps]) > 0){
     success <- success + 1
   }
@@ -149,19 +116,19 @@ RemoveNull <- function(x){
     !is.null(x)
 }
 # Created to test prior function 
-success2 <- sapply(success, RemoveNull) # This should actually be called success
-
+sapply(success, RemoveNull) # This should actually be called success
 sum(success2) / length(test$Date)
 
 
 # Finally got something that works. Use above functions in one function call to find answer. 
 DownCounter <- function(data) {
+  success <- 0
   data[, Date2 := as.Date(c(data$Date[-1], NA))]
-  dates <<- data[data$Date2 - data$Date > 1]
-  daterange1 <<- lapply(dates$Date, CreateRange, 30)
-  testrange1 <<- lapply(daterange1, DownMatch, EURUSD)
-  positive <<- sapply(testrange1, TestCounter)
-  positive1 <<- unlist(positive)
+  dates <- data[data$Date2 - data$Date > 1]
+  daterange1 <- lapply(dates$Date, CreateRange, 30)
+  testrange1 <- lapply(daterange1, DownMatch, EURUSD)
+  positive <- sapply(testrange1, TestCounter)
+  positive1 <- unlist(positive)
   sum(unlist(positive1)) / length(dates$Date)
 }
 
