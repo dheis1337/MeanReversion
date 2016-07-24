@@ -28,39 +28,23 @@ EURUSD <- EURUSD[-c(1:29)]
 EURUSD[, low.eps := mavg -(mavg * .005)]
 EURUSD[, up.eps := mavg +(mavg * .005)]
 
-# Below
-below <- lower[Value < dn]
+# Make data.table for below deviation
+below <- EURUSD[Value < dn]
 
-# Above 
+# Make data.table for above deviation
 above <- EURUSD[Value > up]
 
-# Between lower epsilon band and lower bollinger band
-between.low.and.eps <- EURUSD[Value > dn & Value < low.eps]
+# Below are a list of functions to used in the final MeanRevert function
 
-# Between upper epsilon band and upper bollinger
-between.up.and.eps <- EURUSD[Value < up & Value > up.eps]
-
-# Between epsilon bands
-between.eps <- EURUSD[Value >= low.eps & Value <= up.eps]
-
-
-below[, Date2 := as.Date(c(below$Date[-1], NA))] # Line up Date column with the succeeding date
-
-
-
-below$Date2 - below$Date # Take difference between Date column and succeeding date column
-below[below$Date2 - below$Date > 1] # Find where difference in Dates is greater than 1
-
-below[below$Date2 - below$Date > 1]
-
-
-
-
-success <- 0
-if(nrow(test2[Value > low.eps]) > 0){
-  success <- success + 1
+CleanData <- function(x){
+  # Takes either the 'below' or 'above' data.table and takes only the last day
+  # where the 'Value' is below/above the respective band, i.e. it removes any 
+  # consecutive days below/above the respective band and just takes the last day
+  # before crossing back inside the band
+  x[, Date2 := as.Date(c(x$Date[-1], NA))]
+  dates <- x[x$Date2 - x$Date > 1]
+  dates <- rbind(dates, x[.N])
 }
-
 
  CreateRange <- function(x, timeframe){
    # Take a vector of dates preprocessed to be the last dates where the 
@@ -70,7 +54,7 @@ if(nrow(test2[Value > low.eps]) > 0){
  }
 
 
-DownMatch <- function(x, matchdata){
+DateMatch <- function(x, matchdata){
   # Takes the result from the CreateRange function and matches the dates in this
   # result with the dates in the overall dataset. 
   matchdata[Date %in% x]
@@ -88,23 +72,26 @@ TestCounter <- function(x){
   }
 }
 
-# Not sure I still need this
-RemoveNull <- function(x){
-    !is.null(x)
-}
 # Created to test prior function 
 sapply(success, RemoveNull) # This should actually be called success
 sum(success2) / length(test$Date)
 
 
-# Finally got something that works. Use above functions in one function call to find answer. 
-DownCounter <- function(data){
-  data[, Date2 := as.Date(c(data$Date[-1], NA))]
-  dates <<- data[data$Date2 - data$Date > 1]
-  daterange1 <<- lapply(dates$Date, CreateRange, 30)
-  testrange1 <<- lapply(daterange1, DownMatch, lower)
-  positive <<- sapply(testrange1, TestCounter)
-  positive1 <<- unlist(positive)
+MeanRevert <- function(data){
+  # The final function in the sequence. Takes the preprocessed data.table
+  # that is corresponds to the times in our dataset where the 'Value' 
+  # goes below the 'dn' st.dev band and reverts back to the 'mavg'. Final
+  # result is the prob. that there is a succesful reversion; defined as the 
+  # number of times reverted over the number of nonconsecutive days 'Value'
+  # is below the 'dn' band. 
+  dates <- CleanData(data)
+  daterange1 <- lapply(dates$Date, CreateRange, 30)
+  testrange1 <- lapply(daterange1, DateMatch, EURUSD)
+  positive <- sapply(testrange1, TestCounter)
+  positive1 <- unlist(positive)
   sum(unlist(positive1)) / length(dates$Date)
 }
+
+
+
 
