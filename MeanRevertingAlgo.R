@@ -24,17 +24,12 @@ EURUSD <- as.data.table(EURUSD)
 EURUSD[, pctB := NULL]
 EURUSD <- EURUSD[-c(1:29)]
 
-
-# Make below table
-lower <- EURUSD[, .(Date, Value, dn, mavg)]
-lower[, low.eps := mavg -(mavg * .005)]
-
-# Make above data.table
-upper <- EURUSD[, .(Date, Value, up, mavg)]
-upper[, up.eps := mavg +(mavg * .005)]
+# Add error bands to the moving average to ease the mean reverting requirement
+EURUSD[, low.eps := mavg -(mavg * .005)]
+EURUSD[, up.eps := mavg +(mavg * .005)]
 
 # Below
-below <- EURUSD[Value < dn]
+below <- lower[Value < dn]
 
 # Above 
 above <- EURUSD[Value > up]
@@ -49,26 +44,8 @@ between.up.and.eps <- EURUSD[Value < up & Value > up.eps]
 between.eps <- EURUSD[Value >= low.eps & Value <= up.eps]
 
 
-data2 <- data2[-c(1:4000), ]
-
-abv <- dummy[dummy$Value > dummy$up, ]
-blow <- dummy[dummy$Value < dummy$dn, ]
-
-
-eps <- data2$mavg * 0.005
-up.eps <- data2$mavg + eps
-
-up <- data2$up
-
-
-dummy <- data.frame(data2)
-dummy <- mutate(dummy, up.eps = (dummy$mavg * .005) + dummy$mavg)
-dummy <- mutate(dummy, low.eps = dummy$mavg - (dummy$mavg * .005))
-
-
-
-
 below[, Date2 := as.Date(c(below$Date[-1], NA))] # Line up Date column with the succeeding date
+
 
 
 below$Date2 - below$Date # Take difference between Date column and succeeding date column
@@ -105,9 +82,9 @@ TestCounter <- function(x){
   # where the Value has officially crossed back over the low.eps mavg error band, thus
   # indicating that it has successfully bounced back from being below the desired standard
   # deviation level, i.e our value has officially reverted!
-    success <- 0
-    if(nrow(x[Value > low.eps]) > 0){
-    success <- success + 1
+  success <- 0
+  if(nrow(x[Value > low.eps]) > 0){
+  success <- success + 1
   }
 }
 
@@ -121,14 +98,13 @@ sum(success2) / length(test$Date)
 
 
 # Finally got something that works. Use above functions in one function call to find answer. 
-DownCounter <- function(data) {
-  success <- 0
+DownCounter <- function(data){
   data[, Date2 := as.Date(c(data$Date[-1], NA))]
-  dates <- data[data$Date2 - data$Date > 1]
-  daterange1 <- lapply(dates$Date, CreateRange, 30)
-  testrange1 <- lapply(daterange1, DownMatch, EURUSD)
-  positive <- sapply(testrange1, TestCounter)
-  positive1 <- unlist(positive)
+  dates <<- data[data$Date2 - data$Date > 1]
+  daterange1 <<- lapply(dates$Date, CreateRange, 30)
+  testrange1 <<- lapply(daterange1, DownMatch, lower)
+  positive <<- sapply(testrange1, TestCounter)
+  positive1 <<- unlist(positive)
   sum(unlist(positive1)) / length(dates$Date)
 }
 
