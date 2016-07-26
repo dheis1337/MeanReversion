@@ -1,53 +1,40 @@
 library(TTR)
 library(ggplot2)
 library(data.table)
+library(lubridate)
 
 # Get data 
 EURUSD <- fread("C:/MyStuff/DataScience/Projects/MeanReversion/EURUSD1.csv", header = FALSE,
       col.names = c("Date", "Time", "Open", "High", "Low", "Close", "Volume"), data.table = FALSE)
 
-# Current format of 'Time' variable is character. Let's change that to POSIXct 
-# First let's make the '.' in the 'Date' variable '-'
-EURUSD$Date <- gsub("\\.", "-", EURUSD$Date)
-
-# Now let's join the 'Date' and 'Time' variables
-EURUSD$Time <- paste(EURUSD$Date, EURUSD$Time, sep = " ")
-
-# Now let's convert the 'Time' variable to POSIXct
-EURUSD$Time <- as.POSIXct(EURUSD$Time)
-
-# Now let's remove the 'Date' Column sense we have our Datetime format in 'Time'
-EURUSD <- EURUSD[, -1]
-
-# Let's change the column names
-names(EURUSD) <- c("Date.Time", "Open", "High", "Low", "Close", "Volume")
-
-# Finally, let's make EURUSD a data.table
-EURUSD <- data.table(EURUSD)
-
-# Add standard deviation bands
-bands <- BBands(EURUSD$Close, n = 30, sd = 3)
-
-# Add standard deviations to 'EURUSD'
-EURUSD <- cbind(EURUSD, bands)
-
-# Get rid 'bands' variable; won't be used anymore 
-rm(bands)
+# Get USDJPY data
+USDJPY <- fread("D:/Users/US51898/Desktop/Currency Data/USDJPY.csv", header = FALSE,
+                col.names = c("Date", "Time", "Open", "High", "Low", "Close", "Volume"))
 
 
-# Remove NA values created from calculation in above code and remove 'pctB' column
-EURUSD[, c("pctB", "Open", "High", "Low", "Volume") := NULL]
-EURUSD <- EURUSD[-c(1:29)]
+FormatData <- function(data, time, sd, periods){
+  data[, Date := gsub("\\.", "-", data$Date), ] # Change date format
+  dates <- Sys.Date() - days(1:time) # Used to subset data
+  dates <- as.character(dates) # Convert for subsetting
+  names(data) <- c("Date", "Date.Time","Open", "High", "Low", "Close", "Volume")
+  data <- data[Date %in% dates] # Gets last 1:time number of dates
+  data[, Date.Time := paste(data$Date, data$Date.Time, sep = " ")]
+  data[, c("Date", "Open", "High", "Low", "Volume") := NULL]
+  data[, Date.Time := as.POSIXct(data$Date.Time)]
+  bands <- BBands(data$Close, n = periods, sd = sd)
+  data <- cbind(data, bands)
+  data[, pctB := NULL]
+  data <- data[-c(1:119)]
+  data[, low.eps := mavg - (mavg * .005)]
+  data[, up.eps := mavg + (mavg * .005)]
+  matchdata <<- data
+  below <<- data[Close < dn]
+  below[, c("up", "up.eps") := NULL]
+  above <<- data[Close > up]
+  above[, c("dn", "low.eps") := NULL]
+  
+}
 
-# Add error bands to the moving average to ease the mean reverting requirement
-EURUSD[, low.eps := mavg -(mavg * .005)]
-EURUSD[, up.eps := mavg +(mavg * .005)]
-
-# Make data.table for below deviation
-below <- EURUSD[Close < dn]
-
-# Make data.table for above deviation
-above <- EURUSD[Close > up]
 
 # Below are a list of functions to used in the final MeanRevert function
 
@@ -70,7 +57,7 @@ CleanData <- function(x){
  }
 
 
-DateMatch <- function(x, matchdata){
+DateMatch <- function(x){
   # Takes the result from the CreateRange function and matches the dates in this
   # result with the dates in the overall dataset. 
   matchdata[Date.Time %in% x]
@@ -89,7 +76,7 @@ TestCounter <- function(x){
 }
 
 
-MeanRevert <- function(data){
+MeanRevert <- function(data, dataset){
   # The final function in the sequence. Takes the preprocessed data.table
   # that is corresponds to the times in our dataset where the 'Value' 
   # goes below the 'dn' st.dev band and reverts back to the 'mavg'. Final
@@ -98,7 +85,7 @@ MeanRevert <- function(data){
   # is below the 'dn' band. 
   dates <- CleanData(data)
   daterange <- lapply(dates$Date.Time, CreateRange, 30)
-  testrange <- lapply(daterange, DateMatch, EURUSD)
+  testrange <- lapply(daterange, DateMatch)
   positive <- sapply(testrange, TestCounter)
   sum(unlist(positive)) / length(dates$Date.Time)
 }
@@ -112,6 +99,6 @@ below[, Date.Time2 := as.POSIXct(c(below$Date.Time[-1], NA))]
 dates <- below[below$Date.Time2 - below$Date.Time > 1]
 dates <- rbind(dates, below[.N])
 range <- lapply(dates$Date.Time, CreateRange, 30)
-test <- lapply(range, DateMatch, EURUSD)
+test <- lapply(range, DateMatch)
 positive <- sapply(test, TestCounter)
 sum(unlist(positive)) / length(dates$Date.Time)
