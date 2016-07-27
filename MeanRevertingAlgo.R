@@ -3,16 +3,29 @@ library(ggplot2)
 library(data.table)
 library(lubridate)
 
-# Get data 
-EURUSD <- fread("C:/MyStuff/DataScience/Projects/MeanReversion/EURUSD1.csv", header = FALSE,
-      col.names = c("Date", "Time", "Open", "High", "Low", "Close", "Volume"), data.table = FALSE)
+# Path
+path <- c("C:/MyStuff/DataScience/Projects/MeanReversion")
+setwd(path)
 
 # Get USDJPY data
-USDJPY <- fread("D:/Users/US51898/Desktop/Currency Data/USDJPY.csv", header = FALSE,
+USDJPY <- fread("USDJPY.csv", header = FALSE,
                 col.names = c("Date", "Time", "Open", "High", "Low", "Close", "Volume"))
 
+# Import data function
+
+ImportData <- function(){
+  
+}
 
 FormatData <- function(data, time, sd, periods){
+  # Function takes as inputs the raw data from the Meta Trader 4 platform 
+  # and converts it into the necessary two data.tables - 'above' and 'below' - 
+  # to be used in the MeanRevert function. The inputs are:
+  # data: raw data 
+  # time: number of days you want to look back from the current date
+  # sd: number of standard deviations to set the Bollinger bands to
+  # periods: number of periods you want to look forward to test if the price 
+  # has rever
   data[, Date := gsub("\\.", "-", data$Date), ] # Change date format
   dates <- Sys.Date() - days(1:time) # Used to subset data
   dates <- as.character(dates) # Convert for subsetting
@@ -38,18 +51,18 @@ FormatData <- function(data, time, sd, periods){
 
 # Below are a list of functions to used in the final MeanRevert function
 
-CleanData <- function(x){
+CleanData <- function(x, width){
   # Takes either the 'below' or 'above' data.table and takes only the last day
   # where the 'Value' is below/above the respective band, i.e. it removes any 
   # consecutive days below/above the respective band and just takes the last day
   # before crossing back inside the band
-  x[, Date.Time2 := as.POSIXct(c(below$Date.Time[-1], NA))]
-  dates <- x[x$Date.Time2 - x$Date.Time > 1,]
+  x[, Date.Time2 := as.POSIXct(c(x$Date.Time[-1], NA))]
+  dates <- x[x$Date.Time2 - x$Date.Time > width,]
   dates <- rbind(dates, x[.N])
   return(dates)
 }
 
- CreateRange <- function(x, timeframe){
+CreateRange <- function(x, timeframe){
    # Take a vector of dates preprocessed to be the last dates where the 
    # Value < dn band and then adds the specified 'timeframe' to them. Could
    # be 30 periods, could be 15, etc
@@ -76,14 +89,14 @@ TestCounter <- function(x){
 }
 
 
-MeanRevert <- function(data, dataset){
+MeanRevert <- function(data, width){
   # The final function in the sequence. Takes the preprocessed data.table
   # that is corresponds to the times in our dataset where the 'Value' 
   # goes below the 'dn' st.dev band and reverts back to the 'mavg'. Final
   # result is the prob. that there is a succesful reversion; defined as the 
   # number of times reverted over the number of nonconsecutive days 'Value'
   # is below the 'dn' band. 
-  dates <- CleanData(data)
+  dates <- CleanData(data, width)
   daterange <- lapply(dates$Date.Time, CreateRange, 30)
   testrange <- lapply(daterange, DateMatch)
   positive <- sapply(testrange, TestCounter)
